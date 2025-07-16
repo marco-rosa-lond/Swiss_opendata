@@ -1,5 +1,6 @@
 
-from download import *
+from download import download_datasets
+
 def main():
 
     # Step 1 - download files
