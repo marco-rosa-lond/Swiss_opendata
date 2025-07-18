@@ -264,14 +264,12 @@ def download_datasets(datasets):
             for file in files:
                 bulk_insert_file_to_sql(file, table_name)
 
-                # Deletes old downloads (only most recent file is kept)
-                delete_old_downloads(dataset_name)
+            # Deletes old downloads (only most recent file is kept)
+            delete_old_downloads(dataset_name)
 
     except Exception as e:
         print(e)
     finally:
-
-
         drop_directory(DIR_CHUNKS)
 
 
