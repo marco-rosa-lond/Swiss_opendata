@@ -33,7 +33,6 @@ def ftp_save_backup_file(file_abs_path, ftp_path):
     print(f'Sending backup file to {ftp_path}/{bak_file}')
     input('Continue?')
 
-
     ftp_handler = FtpHandler()
     try:
 

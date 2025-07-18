@@ -21,16 +21,12 @@ engine = create_engine(connection_string,
     fast_executemany=True)
 
 database_name = engine.url.database
-connection = engine.connect()
 
 
 def download_data(url, retries=3):
     """
-    Fetches data from a URL with retry mechanism in case of ReadTimeout error,
-    and displays a progress bar while downloading.
+    Fetches data from a URL with retry mechanism in case of ReadTimeout error
     """
-    filename = url.split('/')[-1]
-
     session = requests.Session()
     retry_strategy = Retry(
         total=retries,
@@ -41,11 +37,14 @@ def download_data(url, retries=3):
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
-    print(f"Downloading {filename}...")
+    create_directory(DIR_DOWNLOADS)
+    filename = url.split('/')[-1]
     filepath = os.path.join(DIR_DOWNLOADS, filename.replace('.txt', '.tsv'))
-
+    print(f"\nDownloading {filename}...")
 
     try:
+
+
         with session.get(url, stream=True, timeout=(30, 120)) as r:
             r.raise_for_status()
 
@@ -60,7 +59,7 @@ def download_data(url, retries=3):
             print(f"File size: {str(round(file_size_in_bytes/1024**3,2))} GB")
 
             if os.path.exists(filepath) and file_size_in_bytes == os.path.getsize(filepath):
-                print(f"{filepath.split('\\')[1]} already exists, skipping.")
+                print(f"\n{filepath.split('\\')[1]} already exists, skipping.")
                 return filepath
 
 
@@ -89,55 +88,91 @@ def download_data(url, retries=3):
     return None
 
 
-def create_sql_table(df: pd.DataFrame, table_name: str):
-    table_name = table_name.replace(".tsv", "").replace(".csv", "")
-    connection.execute(text(f"IF OBJECT_ID('[{table_name}]', 'U') IS NOT NULL DROP TABLE [{table_name}]"))
-    create_sql = generate_create_table(df, table_name)
-    # print("Criando tabela com SQL:\n", create_sql)
-    print("Criando tabela com SQL:\n", table_name)
-    connection.execute(text(create_sql))
-    connection.commit()
+def recreate_sql_table(df: pd.DataFrame, table_name: str):
 
+    table_name = table_name.replace(".tsv", "").replace(".csv", "")
+    connection = engine.connect()
+
+    try:
+        # APAGAR TABELA SE EXISTE
+        drop_table_stmt = text(f"IF OBJECT_ID('[{table_name}]', 'U') IS NOT NULL DROP TABLE [{table_name}]")
+        connection.execute(drop_table_stmt)
+        connection.commit()
+        print('Apagou tabela: ', table_name)
+
+        # CRIAR TABELA
+        create_sql_stmt = text(generate_create_table(df, table_name))
+        connection.execute(create_sql_stmt)
+        connection.commit()
+        print('Criou tabela SQL: ',table_name)
+
+    except Exception as e:
+        print(e)
+    finally:
+        connection.close()
 
 
 def prepare_to_insert_sql(file_path, table_name):
-    # file_name = os.path.basename(file_path)
-    # table_name = file_name.split('.')[0]
+
+    print("\nPreparar Bulk insert")
 
     row_count = count_file_rows(file_path)
     print(f"{row_count:,} total rows.")
 
-    chunk_files = []
-
-    sample_from_chunks = pd.DataFrame()
-    reader = pd.read_csv(file_path, encoding='utf-8', sep="\t", low_memory=False, chunksize=linhas_por_chunk)
-    for i, chunk in enumerate(reader):
-
-        # Translate columns to english / maps columns & Convert column dtypes
-        df = map_columns(chunk, mapping_file=column_mapper)
+    if row_count < linhas_por_chunk:
+        df = pd.read_csv(file_path, encoding='utf-8', sep="\t", low_memory=False)
+        df = map_columns(df, mapping_file=column_mapper)
         df = df.convert_dtypes()
 
-        # Create a chunk from file
-        chunk_path = os.path.join(DIR_CHUNKS, f"chunk_{table_name}_part{i + 1}.tsv")
-        df.to_csv(chunk_path, sep="\t", index=False, encoding='utf-8')
-        chunk_files.append(os.path.basename(chunk_path))
-        sample_from_chunks = pd.concat(
-            [sample_from_chunks, df.sample(frac=0.1)]
-        )
+        output_file = os.path.join(DIR_CHUNKS, table_name)
+        df.to_csv(output_file, sep="\t", index=False, encoding='utf-8')
+        recreate_sql_table(df, table_name)
+        return [output_file]
 
-    print("Created chunk files")
-    # Creates the table from a sample of the chunks
-    create_sql_table(sample_from_chunks, table_name)
-    return chunk_files
+    # Ficheiro tem mais que o limite maximo de rows
+    else:
+        chunk_files = []
+        df_all_chunks = pd.DataFrame()
+        create_directory(DIR_CHUNKS)
+        print(f'Dividir em ficheiros de {linhas_por_chunk:,} rows.')
 
 
-def bulk_insert_file_to_sql(file, table_name):
+        reader = pd.read_csv(file_path, encoding='utf-8', sep="\t", low_memory=False, chunksize=linhas_por_chunk)
+        for i, chunk in enumerate(reader):
+
+            # Translate columns to english / maps columns & Convert column dtypes
+            df = map_columns(chunk, mapping_file=column_mapper)
+            df = df.convert_dtypes()
+
+            # Creates a file
+            chunk_path = os.path.join(DIR_CHUNKS, f"chunk_{table_name}_part{i + 1}.tsv")
+            df.to_csv(chunk_path, sep="\t", index=False, encoding='utf-8')
+            print(f"Criou ficheiro {chunk_path}")
+
+            df_all_chunks = pd.concat([df_all_chunks, df])
+
+            # Append to the chunk list
+            chunk_files.append(chunk_path)
+
+        # Creates the SQL TABLE from the sample
+        recreate_sql_table(df_all_chunks, table_name)
+
+        # returns list with all chunks
+        return chunk_files
+
+
+def bulk_insert_file_to_sql(file_path, table_name):
+
+    drop_directory(DIR_ERRORS)
+    create_directory(DIR_ERRORS)
     errors_dir = os.path.join(os.getcwd(), DIR_ERRORS)
-    chunks_dir = os.path.join(os.getcwd(), DIR_CHUNKS)
 
-    file_abs_path = os.path.abspath(os.path.join(chunks_dir, file))
-    sep = "\t"
+    file_abs_path = os.path.abspath(file_path)
+    file_basename = os.path.basename(file_path)
+    connection = engine.connect()
     try:
+
+        sep = "\t" # field terminator for TSV
         sql = f"""
             BULK INSERT {database_name}.dbo.[{table_name}]
             FROM '{file_abs_path}' 
@@ -149,15 +184,14 @@ def bulk_insert_file_to_sql(file, table_name):
                 MAXERRORS = 10000
         )
         """
-        # print(sql)
-        print(f"A importar: {file} to {table_name} SQL table")
 
-        # input("PRESS TO IMPORT")
+        print(f"A importar: {file_basename} to {table_name} SQL table")
+
         connection.execute(text(sql))
         connection.commit()
 
     except Exception as e:
-        print(f"Erro ao importar {file}: {e}")
+        print(f"Erro ao importar {file_basename}: {e}")
         linhas_com_erro = []
 
 
@@ -165,7 +199,7 @@ def bulk_insert_file_to_sql(file, table_name):
             linhas_com_erro.append(int(match.group(1)))
         if linhas_com_erro:
             print(f"Linhas com erro detectadas: {linhas_com_erro}")
-            erro_csv = os.path.join(errors_dir, f"errors_{file}")
+            erro_csv = os.path.join(errors_dir, f"errors_{file_basename}")
 
             with (open(file_abs_path, encoding="utf-8") as infile,
                   open(erro_csv, "w", newline="", encoding="utf-8") as outfile):
@@ -178,32 +212,28 @@ def bulk_insert_file_to_sql(file, table_name):
                         writer.writerow(row)
             print(f"Linhas com erro guardadas em: {erro_csv}")
 
+    finally:
+        connection.close()
 
 
 def download_datasets(datasets):
 
-    drop_directory(DIR_ERRORS)
-    create_directory(DIR_ERRORS)
-
-    create_directory(DIR_DOWNLOADS)
-    create_directory(DIR_CHUNKS)
-
     try:
         for dataset_name, url in datasets.items():
-
+            print('---------')
+            #download file
             file_path = download_data(url)
             table_name = os.path.basename(file_path).split('.')[0]
 
-            # Splits file into chunks & Creates table
-            chunk_files = prepare_to_insert_sql(file_path, table_name)
+            # Creates table & gets the files to Bulk insert
+            files = prepare_to_insert_sql(file_path, table_name)
 
-            for chunk_file in chunk_files:
-                bulk_insert_file_to_sql(chunk_file, table_name)
+            for file in files:
+                bulk_insert_file_to_sql(file, table_name)
 
     except Exception as e:
         print(e)
     finally:
-        connection.close()
         drop_directory(DIR_CHUNKS)
 
 

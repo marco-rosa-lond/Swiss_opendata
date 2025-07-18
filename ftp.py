@@ -3,20 +3,20 @@ import os
 from dotenv import load_dotenv
 import ftplib
 
-load_dotenv("config.env")
-
-FTP_HOST = os.getenv('FTP_HOST')
-FTP_PORT = os.getenv('FTP_PORT')
-FTP_USER = os.getenv('FTP_USER')
-FTP_PASSWORD = os.getenv('FTP_PASSWORD')
 
 
 def ftp_establish_connection():
 
+    load_dotenv("config.env")
+    host = os.getenv('FTP_HOST')
+    port = os.getenv('FTP_PORT')
+    user = os.getenv('FTP_USER')
+    password = os.getenv('FTP_PASSWORD')
+
     ftp = ftplib.FTP()
-    ftp.connect(FTP_HOST, int(FTP_PORT))
+    ftp.connect(host, int(port))
     print(ftp.getwelcome())
-    ftp.login(FTP_USER, FTP_PASSWORD)
+    ftp.login(user, password)
 
     return ftp
 
