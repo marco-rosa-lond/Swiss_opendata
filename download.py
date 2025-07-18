@@ -19,7 +19,6 @@ linhas_por_chunk = 1000000
 connection_string = get_connection_string('sqlalchemy')
 engine = create_engine(connection_string,
     fast_executemany=True)
-
 database_name = engine.url.database
 
 
@@ -43,8 +42,6 @@ def download_data(url, retries=3):
     print(f"\nDownloading {filename}...")
 
     try:
-
-
         with session.get(url, stream=True, timeout=(30, 120)) as r:
             r.raise_for_status()
 
@@ -216,24 +213,65 @@ def bulk_insert_file_to_sql(file_path, table_name):
         connection.close()
 
 
+
+
+def delete_old_downloads(name):
+
+    def extract_date(filename):
+        match = re.search(r'(\d{4})_(\d{2})_(\d{2})', filename)
+        if match:
+            return datetime.strptime('_'.join(match.groups()), '%Y_%m_%d')
+        return None
+
+    files = [f for f in os.listdir(DIR_DOWNLOADS) if
+             os.path.isfile(os.path.join(DIR_DOWNLOADS, f)) and f.lower().startswith(name.lower())]
+
+    more_than_one_download_for_dataset =  len(files) > 1
+
+    if more_than_one_download_for_dataset:
+        files_with_dates = [(f, extract_date(f)) for f in files if extract_date(f) is not None]
+        most_recent_file = max(files_with_dates, key=lambda x: x[1])[0]
+
+        for fname, _ in files_with_dates:
+            if fname != most_recent_file:
+                file_path = os.path.join(DIR_DOWNLOADS, fname)
+                os.remove(file_path)
+                print(f"Deleted: {fname}")
+
+        print(f"Kept: {most_recent_file}")
+
+
+
 def download_datasets(datasets):
 
     try:
         for dataset_name, url in datasets.items():
+
             print('---------')
             #download file
-            file_path = download_data(url)
-            table_name = os.path.basename(file_path).split('.')[0]
+            file_path_last_modified = download_data(url)
+
+            table_name = os.path.basename(
+                file_path_last_modified
+            ).split('.')[0]
 
             # Creates table & gets the files to Bulk insert
-            files = prepare_to_insert_sql(file_path, table_name)
+            files = prepare_to_insert_sql(
+                file_path_last_modified,
+                table_name
+            )
 
             for file in files:
                 bulk_insert_file_to_sql(file, table_name)
 
+                # Deletes old downloads (only most recent file is kept)
+                delete_old_downloads(dataset_name)
+
     except Exception as e:
         print(e)
     finally:
+
+
         drop_directory(DIR_CHUNKS)
 
 
