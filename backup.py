@@ -7,9 +7,9 @@ from ftp import FtpHandler
 from utils import *
 
 
-backup_dir = "DB_BACKUP"
 conn_str = get_connection_string('pyodbc')
 master_conn_str = get_connection_string('pyodbc', db_master=True)
+backup_dir = "DB_BACKUP"
 
 def display_backup_progress(cursor):
     progress = tqdm(total=100, desc="Backup Progress")
