@@ -49,6 +49,11 @@ class FtpHandler:
         self.ftp.storbinary(f'STOR {filename}', zip_data)
         self.ftp.cwd("/")
 
+    def download_from_ftp(self, remote_path, local_path):
+
+        with open(local_path, 'wb') as f:
+            self.ftp.retrbinary(f"RETR {remote_path}", f.write)
+        print(f"Downloaded '{remote_path}' to '{local_path}'")
 
 
     def close(self):
