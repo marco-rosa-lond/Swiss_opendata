@@ -1,16 +1,18 @@
 import os
+import re
 import time
 import shutil
 import zipfile
+from datetime import datetime
 from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 
 
-def get_connection_string(engine):
+def get_connection_string(engine, db_master=False):
     load_dotenv("config.env")
 
-    database = os.getenv('DB_NAME')
+    database = os.getenv('DB_NAME') if not db_master else 'master'
     server = os.getenv('DB_SERVER')
     username = os.getenv('DB_USER')
     password = os.getenv('DB_PASS')
@@ -117,56 +119,63 @@ def map_columns(df, mapping_file):
     return df.rename(columns=column_mapping)
 
 
+# Step 2: Extract dates and build a list of (filename, date) tuples
+def extract_date(filename):
+    match = re.search(r'(\d{4})(\d{2})(\d{2})', filename)
+    if match:
+        return datetime.strptime(''.join(match.groups()), '%Y-%m-%d')
+    return None
 
 
-def unzip_file(zip_path: Path, extract_to: Path = None) -> Path:
-    """
-    Extracts a zip file to the specified directory.
 
-    Args:
-        zip_path (Path): Path to the zip file.
-        extract_to (Path, optional): Destination directory to extract files.
-                                     If None, extracts to the zip's parent directory.
-
-    Returns:
-        Path: The path to the extraction directory.
-    """
-    if not zip_path.is_file():
-        raise FileNotFoundError(f"Zip file does not exist: {zip_path}")
-
-    if extract_to is None:
-        extract_to = zip_path.parent / zip_path.stem  # Default: ./zipname/
-
-    extract_to.mkdir(parents=True, exist_ok=True)
-
-    with zipfile.ZipFile(zip_path, 'r') as zipf:
-        zipf.extractall(extract_to)
-
-    return extract_to
-
-
-def zip_path(source_path: Path) -> Path:
-    """
-    Zips a single file or directory (recursively) into a .zip file.
-
-    Args:
-        source_path (Path): Path to the file or directory to zip.
-
-    Returns:
-        Path: The path to the created zip file.
-    """
-    zip_filename = source_path.with_suffix(".zip")
-
-    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        if source_path.is_file():
-            zipf.write(source_path, arcname=source_path.name)
-        elif source_path.is_dir():
-            for root, dirs, files in os.walk(source_path):
-                for file in files:
-                    file_path = Path(root) / file
-                    arcname = file_path.relative_to(source_path.parent)
-                    zipf.write(file_path, arcname=arcname)
-        else:
-            raise FileNotFoundError(f"Source path does not exist: {source_path}")
-
-    return zip_filename
+# def unzip_file(zip_path: Path, extract_to: Path = None) -> Path:
+#     """
+#     Extracts a zip file to the specified directory.
+#
+#     Args:
+#         zip_path (Path): Path to the zip file.
+#         extract_to (Path, optional): Destination directory to extract files.
+#                                      If None, extracts to the zip's parent directory.
+#
+#     Returns:
+#         Path: The path to the extraction directory.
+#     """
+#     if not zip_path.is_file():
+#         raise FileNotFoundError(f"Zip file does not exist: {zip_path}")
+#
+#     if extract_to is None:
+#         extract_to = zip_path.parent / zip_path.stem  # Default: ./zipname/
+#
+#     extract_to.mkdir(parents=True, exist_ok=True)
+#
+#     with zipfile.ZipFile(zip_path, 'r') as zipf:
+#         zipf.extractall(extract_to)
+#
+#     return extract_to
+#
+#
+# def zip_path(source_path: Path) -> Path:
+#     """
+#     Zips a single file or directory (recursively) into a .zip file.
+#
+#     Args:
+#         source_path (Path): Path to the file or directory to zip.
+#
+#     Returns:
+#         Path: The path to the created zip file.
+#     """
+#     zip_filename = source_path.with_suffix(".zip")
+#
+#     with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+#         if source_path.is_file():
+#             zipf.write(source_path, arcname=source_path.name)
+#         elif source_path.is_dir():
+#             for root, dirs, files in os.walk(source_path):
+#                 for file in files:
+#                     file_path = Path(root) / file
+#                     arcname = file_path.relative_to(source_path.parent)
+#                     zipf.write(file_path, arcname=arcname)
+#         else:
+#             raise FileNotFoundError(f"Source path does not exist: {source_path}")
+#
+#     return zip_filename

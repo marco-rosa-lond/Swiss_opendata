@@ -6,10 +6,12 @@ from tqdm import tqdm
 from ftp import FtpHandler
 from utils import *
 
-conn_str = get_connection_string('pyodbc')
-backup_dir = "DB_BACKUP"
 
-def get_backup_progress(cursor):
+backup_dir = "DB_BACKUP"
+conn_str = get_connection_string('pyodbc')
+master_conn_str = get_connection_string('pyodbc', db_master=True)
+
+def display_backup_progress(cursor):
     progress = tqdm(total=100, desc="Backup Progress")
     last_percent = 0
 
@@ -24,35 +26,35 @@ def get_backup_progress(cursor):
                     last_percent = percent
 
         cursor.messages.clear()
-
     progress.close()
 
 
-def ftp_save_backup_file(file_abs_path, ftp_path):
-    bak_file = os.path.basename(file_abs_path)
-    print(f'Sending backup file to {ftp_path}/{bak_file}')
-    input('Continue?')
-
+def ftp_save_backup_file(bak_abs_path, ftp_path):
+    print(f'\nUploading backup file to {ftp_path}')
     ftp_handler = FtpHandler()
+    ftp_handler.send_to_ftp(bak_abs_path, ftp_path)
+
+
+def drop_database(db_name):
+
+    conn = pyodbc.connect(master_conn_str, autocommit=True)
     try:
+        with conn.cursor() as cursor:
+            cursor.execute(f"""
+            ALTER DATABASE [{db_name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+            DROP DATABASE IF EXISTS [{db_name}];
+            """)
+            conn.commit()
+            print(f"Database dropped: {db_name}")
 
-        with open(file_abs_path, "rb") as bak_file_bin:
-            ftp_handler.send_to_ftp(
-                zip_data=bak_file_bin,
-                dest_dir=ftp_path,
-                filename=bak_file
-            )
-
-        print("BACKUP SENT TO FTP")
     except Exception as e:
-        print(e)
+        print(f"Error dropping database {db_name}: {e}")
 
     finally:
-        ftp_handler.close()
+        conn.close()
 
 
 def backup_and_send_with_ftp(ftp_path):
-
     conn = pyodbc.connect(conn_str, autocommit=True)
     database_name = conn.getinfo(SQL_DATABASE_NAME)
 
@@ -70,19 +72,26 @@ def backup_and_send_with_ftp(ftp_path):
             sql = f"""
                     BACKUP DATABASE [{database_name}] TO DISK = N'{file_abs_path}'
                     WITH COPY_ONLY, NOFORMAT, SKIP, NOREWIND, NOUNLOAD, COMPRESSION, STATS = {stats}
-                """
-            cursor.execute(sql)
-            get_backup_progress(cursor)
-        conn.close()
+            """
 
-        ftp_save_backup_file(file_abs_path, ftp_path)
+            cursor.execute(sql)
+            display_backup_progress(cursor)
+            print(f"Backup of {database_name} database completed")
 
     except Exception as e:
-        print(f"Error occurred: {e}")
-
+        print(f"Error creating backup {file_abs_path} file from {database_name}: {e}")
     finally:
         os.remove(file_abs_path)
         conn.close()
+
+
+    ftp_save_backup_file(file_abs_path, ftp_path)
+    drop_database(database_name)
+
+
+
+
+
 
 
 

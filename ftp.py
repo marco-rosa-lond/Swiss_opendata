@@ -3,8 +3,6 @@ import os
 from dotenv import load_dotenv
 import ftplib
 
-
-
 def ftp_establish_connection():
 
     load_dotenv("config.env")
@@ -42,19 +40,53 @@ class FtpHandler:
             return False
 
 
-    def send_to_ftp(self, zip_data, dest_dir, filename):
-        print(dest_dir)
-        self.create_dir(dest_dir)
-        self.ftp.cwd(dest_dir)
-        self.ftp.storbinary(f'STOR {filename}', zip_data)
-        self.ftp.cwd("/")
+    def send_to_ftp(self, file_path, dest_dir):
+        filename = os.path.basename(file_path)
+        print(f"Uploading '{filename}' to '{dest_dir}'")
+
+        try:
+            self.create_dir(dest_dir)
+            self.ftp.cwd(dest_dir)
+
+            with open(file_path, "rb") as file:
+                self.ftp.storbinary(f"STOR {filename}", file)
+
+            print(f"Upload complete: {filename}")
+
+        except Exception as e:
+            print(f"Error uploading '{filename}': {e}")
+
+        finally:
+            self.ftp.cwd("/")  # Always return to root
+            self.close()
+
 
     def download_from_ftp(self, remote_path, local_path):
-
         with open(local_path, 'wb') as f:
             self.ftp.retrbinary(f"RETR {remote_path}", f.write)
         print(f"Downloaded '{remote_path}' to '{local_path}'")
 
+
+    def list_files_in_dir(self, remote_dir, pattern=None):
+        file_paths = []
+        try:
+            self.ftp.cwd(remote_dir)
+            items = self.ftp.nlst()
+
+            for item in items:
+                try:
+                    self.ftp.cwd(item)  # Check if it's a dir
+                    self.ftp.cwd("..")  # It's a folder, skip it
+                except ftplib.error_perm:
+                    # It's a file
+                    if pattern is None or item.lower().endswith(pattern.lower()):
+                        full_path = f"{remote_dir.rstrip('/')}/{item}"
+                        file_paths.append(full_path)
+
+        except Exception as e:
+            print(f"Error accessing {remote_dir}: {e}")
+
+        return file_paths
 
     def close(self):
         self.ftp.close()
