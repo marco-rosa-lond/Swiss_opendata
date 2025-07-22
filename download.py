@@ -1,31 +1,23 @@
-import csv
 import os.path
-import re
-from datetime import datetime
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from tqdm import tqdm
 from utils import *
-from sqlalchemy import create_engine, text
+from SQLServer import SQLServerManager
 
+sql_manager = SQLServerManager()
+database = sql_manager.database
 
 column_mapper = "column_mapping.csv"
 DIR_DOWNLOADS = 'Downloads'
-DIR_CHUNKS = 'CHUNKS'
+DIR_CHUNKS = 'chunk_files'
 DIR_ERRORS = 'Errors'
 linhas_por_chunk = 1000000
 
-connection_string = get_connection_string('sqlalchemy')
-engine = create_engine(connection_string,
-    fast_executemany=True)
-database_name = engine.url.database
-
 
 def download_data(url, retries=3):
-    """
-    Fetches data from a URL with retry mechanism in case of ReadTimeout error
-    """
+
     session = requests.Session()
     retry_strategy = Retry(
         total=retries,
@@ -36,7 +28,8 @@ def download_data(url, retries=3):
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
-    create_directory(DIR_DOWNLOADS)
+
+
     filename = url.split('/')[-1]
     filepath = os.path.join(DIR_DOWNLOADS, filename.replace('.txt', '.tsv'))
     print(f"\nDownloading {filename}...")
@@ -82,31 +75,8 @@ def download_data(url, retries=3):
     except requests.exceptions.RequestException as e:
         print(f"An error occurred: {e}")
 
+    drop_directory(DIR_DOWNLOADS)
     return None
-
-
-def recreate_sql_table(df: pd.DataFrame, table_name: str):
-
-    table_name = table_name.replace(".tsv", "").replace(".csv", "")
-    connection = engine.connect()
-
-    try:
-        # APAGAR TABELA SE EXISTE
-        drop_table_stmt = text(f"IF OBJECT_ID('[{table_name}]', 'U') IS NOT NULL DROP TABLE [{table_name}]")
-        connection.execute(drop_table_stmt)
-        connection.commit()
-        print('Apagou tabela: ', table_name)
-
-        # CRIAR TABELA
-        create_sql_stmt = text(generate_create_table(df, table_name))
-        connection.execute(create_sql_stmt)
-        connection.commit()
-        print('Criou tabela SQL: ',table_name)
-
-    except Exception as e:
-        print(e)
-    finally:
-        connection.close()
 
 
 def prepare_to_insert_sql(file_path, table_name):
@@ -123,7 +93,7 @@ def prepare_to_insert_sql(file_path, table_name):
 
         output_file = os.path.join(DIR_CHUNKS, table_name)
         df.to_csv(output_file, sep="\t", index=False, encoding='utf-8')
-        recreate_sql_table(df, table_name)
+        sql_manager.recreate_sql_table(df, table_name)
         return [output_file]
 
     # Ficheiro tem mais que o limite maximo de rows
@@ -152,66 +122,10 @@ def prepare_to_insert_sql(file_path, table_name):
             chunk_files.append(chunk_path)
 
         # Creates the SQL TABLE from the sample
-        recreate_sql_table(df_all_chunks, table_name)
+        sql_manager.recreate_sql_table(df_all_chunks, table_name)
 
         # returns list with all chunks
         return chunk_files
-
-
-def bulk_insert_file_to_sql(file_path, table_name):
-
-    drop_directory(DIR_ERRORS)
-    create_directory(DIR_ERRORS)
-    errors_dir = os.path.join(os.getcwd(), DIR_ERRORS)
-
-    file_abs_path = os.path.abspath(file_path)
-    file_basename = os.path.basename(file_path)
-    connection = engine.connect()
-    try:
-
-        sep = "\t" # field terminator for TSV
-        sql = f"""
-            BULK INSERT {database_name}.dbo.[{table_name}]
-            FROM '{file_abs_path}' 
-            WITH (
-                FIELDTERMINATOR = '{sep}',
-                ROWTERMINATOR = '0x0D0A',
-                FIRSTROW = 2,
-                CODEPAGE = '65001',
-                MAXERRORS = 10000
-        )
-        """
-
-        print(f"A importar: {file_basename} to {table_name} SQL table")
-
-        connection.execute(text(sql))
-        connection.commit()
-
-    except Exception as e:
-        print(f"Erro ao importar {file_basename}: {e}")
-        linhas_com_erro = []
-
-
-        for match in re.finditer(r"row (\d+), column", str(e)):
-            linhas_com_erro.append(int(match.group(1)))
-        if linhas_com_erro:
-            print(f"Linhas com erro detectadas: {linhas_com_erro}")
-            erro_csv = os.path.join(errors_dir, f"errors_{file_basename}")
-
-            with (open(file_abs_path, encoding="utf-8") as infile,
-                  open(erro_csv, "w", newline="", encoding="utf-8") as outfile):
-                reader = csv.reader(infile, delimiter="|")
-                writer = csv.writer(outfile, delimiter="|")
-                header = next(reader)
-                writer.writerow(header)
-                for i, row in enumerate(reader, start=2):
-                    if i in linhas_com_erro:
-                        writer.writerow(row)
-            print(f"Linhas com erro guardadas em: {erro_csv}")
-
-    finally:
-        connection.close()
-
 
 
 
@@ -241,31 +155,39 @@ def delete_old_downloads(name):
         print(f"Kept: {most_recent_file}")
 
 
-
-def download_datasets(datasets):
+def download_datasets(dataset_name, url):
 
     try:
-        for dataset_name, url in datasets.items():
+        create_directory(DIR_DOWNLOADS)
+        drop_directory(DIR_ERRORS)
+        create_directory(DIR_ERRORS)
 
-            print('---------')
-            #download file
-            file_path_last_modified = download_data(url)
+        print('\n---------')
+        print(dataset_name.upper())
 
-            table_name = os.path.basename(
-                file_path_last_modified
-            ).split('.')[0]
+        # download file (last modified)
+        file_path = download_data(url)
+        table_name = (os.path
+                      .basename(file_path)
+                      .removesuffix('.tsv'))
 
-            # Creates table & gets the files to Bulk insert
-            files = prepare_to_insert_sql(
-                file_path_last_modified,
-                table_name
-            )
+        # Deletes old downloads (only most recent file is kept)
+        delete_old_downloads(dataset_name)
 
-            for file in files:
-                bulk_insert_file_to_sql(file, table_name)
+        # Creates table & gets the files to Bulk insert
+        create_directory(DIR_CHUNKS)
 
-            # Deletes old downloads (only most recent file is kept)
-            delete_old_downloads(dataset_name)
+        files = prepare_to_insert_sql(
+            file_path,
+            table_name
+        )
+
+        for file in files:
+            sql_manager.bulk_insert_csv(
+                os.path.abspath(file),
+                table_name,
+                os.path.abspath(DIR_ERRORS),
+                field_terminator="\t")
 
     except Exception as e:
         print(e)
