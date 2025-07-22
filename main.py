@@ -33,17 +33,15 @@ def main():
 
         # Step 1 - download files
         for dataset_name, url in FILE_URLS.items():
-            if dataset_name == 'BEST':
-                continue
             download_datasets(dataset_name, url)
 
         # Step 3 - Backup the database to ftp destination
-
         create_directory(backup_dir)
         bak_file_path = sql_manager.backup_database(backup_dir)
 
         ftp_handler = FtpHandler()
         ftp_handler.send_to_ftp(bak_file_path, ftp_path)
+
     finally:
         sql_manager.drop_database()
         drop_directory(backup_dir)
