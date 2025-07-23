@@ -9,7 +9,7 @@ create table Gearbox
 )
 go
 
-INSERT INTO swiss_data_dicionarios.dbo.Gearbox (DE, PT, Tipo, CODE) VALUES (N'Automat', N'Automático', N'Automática', N'A');
-INSERT INTO swiss_data_dicionarios.dbo.Gearbox (DE, PT, Tipo, CODE) VALUES (N'Hydrostat', N'Hidrostático', null, N'H');
-INSERT INTO swiss_data_dicionarios.dbo.Gearbox (DE, PT, Tipo, CODE) VALUES (N'Mechanisch', N'Mecânico', N'Manual', N'M');
-INSERT INTO swiss_data_dicionarios.dbo.Gearbox (DE, PT, Tipo, CODE) VALUES (N'Stufenlos', N'CVT', N'Automática', N'S');
+INSERT INTO Gearbox (DE, PT, Tipo, CODE) VALUES (N'Automat', N'Automático', N'Automática', N'A');
+INSERT INTO Gearbox (DE, PT, Tipo, CODE) VALUES (N'Hydrostat', N'Hidrostático', null, N'H');
+INSERT INTO Gearbox (DE, PT, Tipo, CODE) VALUES (N'Mechanisch', N'Mecânico', N'Manual', N'M');
+INSERT INTO Gearbox (DE, PT, Tipo, CODE) VALUES (N'Stufenlos', N'CVT', N'Automática', N'S');

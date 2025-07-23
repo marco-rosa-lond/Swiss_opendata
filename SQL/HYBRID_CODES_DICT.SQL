@@ -7,7 +7,7 @@ create table Hybrid_codes
 )
 go
 
-INSERT INTO swiss_data_dicionarios.dbo.Hybrid_codes (Code, Motorizacao) VALUES (N'N/A', null);
-INSERT INTO swiss_data_dicionarios.dbo.Hybrid_codes (Code, Motorizacao) VALUES (N'NOVC-FCHV', N'Híbrido');
-INSERT INTO swiss_data_dicionarios.dbo.Hybrid_codes (Code, Motorizacao) VALUES (N'NOVC-HEV', N'Híbrido');
-INSERT INTO swiss_data_dicionarios.dbo.Hybrid_codes (Code, Motorizacao) VALUES (N'OVC-HEV', N'Híbrido Plug-In');
+INSERT INTO Hybrid_codes (Code, Motorizacao) VALUES (N'N/A', null);
+INSERT INTO Hybrid_codes (Code, Motorizacao) VALUES (N'NOVC-FCHV', N'Híbrido');
+INSERT INTO Hybrid_codes (Code, Motorizacao) VALUES (N'NOVC-HEV', N'Híbrido');
+INSERT INTO Hybrid_codes (Code, Motorizacao) VALUES (N'OVC-HEV', N'Híbrido Plug-In');

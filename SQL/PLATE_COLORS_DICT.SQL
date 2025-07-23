@@ -8,6 +8,6 @@ create table Plate_colors
 )
 go
 
-INSERT INTO swiss_data_dicionarios.dbo.Plate_colors (CODE, DE, COR_PT) VALUES (N'0', N'Weiss (Motorwagen)', N'Branco ');
-INSERT INTO swiss_data_dicionarios.dbo.Plate_colors (CODE, DE, COR_PT) VALUES (N'5', N'Braun, Ausnahmefahrzeug', N'Castanho, veículo especial');
-INSERT INTO swiss_data_dicionarios.dbo.Plate_colors (CODE, DE, COR_PT) VALUES (N'6', N'Schwarz, Armeefahrzeug', N'Preto, veículo militar');
+INSERT INTO Plate_colors (CODE, DE, COR_PT) VALUES (N'0', N'Weiss (Motorwagen)', N'Branco ');
+INSERT INTO Plate_colors (CODE, DE, COR_PT) VALUES (N'5', N'Braun, Ausnahmefahrzeug', N'Castanho, veículo especial');
+INSERT INTO Plate_colors (CODE, DE, COR_PT) VALUES (N'6', N'Schwarz, Armeefahrzeug', N'Preto, veículo militar');
